@@ -5,6 +5,7 @@
 %  Previous version: 
 %  
 %  Requires Matlab Econometrics Toolbox (different than Le Sage toolbox)
+%  Tested in Matlab 2015a, may run in Matlab 2014b
 %
 %  Use: Estimates VAR for domestic macro-financial variables in Mexico
 %
@@ -18,8 +19,10 @@
 %       Unrestricted VAR for Mexico variables, US variables as exogenous
 %
 %% Variable description
+%  --------------------
 %
 %  US variables
+%  ------------
 %
 %  1.    UST 3-month bid yield, secondary market, in percent
 %  2.    UST 3-month bid yield, constant maturity, in percent
@@ -32,17 +35,27 @@
 %  9.    WTI, Cushing, spot price FOB, USD/barrel, eop
 %  10.   WTI, domestic spot price, USD/barrel (CME)
 %
-%
 %  Mexico variables
-
-
-
-
-
-
-
-%       
-
+%  ----------------
+% 
+%  1.    Industrial production, 2008 = 100, in level
+%  2.    CETE 28 day, rate
+%  3.    MXN-USD, end-of-period, level
+%  4.    MXN-USD, new peso to US$
+%  5.    Consumer Price Index (CPI), level
+%  6.    Unemployment rate, in percent SA, average
+%  7.    Unemployment rate, in percent SA, eop
+%  8.    IPC, Stock price index, level, average
+%  9.    IPC, Stock price index, level, eop
+%  10.   Commercial bank credit, local currency, millions, eop
+%  11.   Commercial bank total performing loans, loc cur, eop, millions,
+%  12.   Comm bank total performing direct loans, loc cur, eop, millions
+%  13.   Comm bank tot peforming consumption loans, loc cur, eop,  millions
+%  14.   Comm bank tot peforming mortgage loans, loc cur, eop,  millions
+%  15.   Comm bank tot peforming firms self-empl loans, loc cur, eop,  millions
+%  16.   Comm bank tot peforming non-bank fin int, loc cur, eop,  millions
+%  17.   IGAE
+%
 %% Section I: Read Data
 clc; clear all;
 filename = 'HaverData.xls';
@@ -94,11 +107,12 @@ cons = true;
 % set the model
 mdlUS = vgxset('n',nUS,'nAR',nAR,'Constant',cons);
 
-[VARmdlUS, VARmdlUSStdErrors, logLmdlUS, W] = vgxvarx(mdlUS,dY_us01);
+[VARmdlUS, VARmdlUSStdErrors, logLmdlUS, W] = ...
+    vgxvarx(mdlUS,dY_us01(5:end,:),[],dY_us01(1:4,:));
 
-
-
-
+T=10;
+[Forecast, ForecastCov] = vgxpred(VARmdlUS,T,[], dY_us01(end-9:end,:));
+vgxplot(VARmdlUS, dY_us01(end-9:end,:), Forecast, ForecastCov)
 
 
 %% Section III shock specification
