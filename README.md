@@ -1,5 +1,5 @@
-# 2016-Mexico-FSAP
-Programs and data associated with 2016 Mexico FSAP
+# 2016-Mexico
+Programs and data associated with stress scenario analysis
 
 -VAR program for modeling domestic and international macro and financial shocks
 
