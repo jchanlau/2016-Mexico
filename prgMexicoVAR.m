@@ -4,8 +4,11 @@
 %  Current version: 04/08/2016
 %  Previous version: 04/07/2016
 %  
-%  Requires Matlab Econometrics Toolbox (different than Le Sage toolbox)
-%  Tested in Matlab 2015a, may run in Matlab 2014b
+%  Requires:
+%       Matlab Econometrics Toolbox (different than Le Sage toolbox)
+%       mvrandn.m file, Zdravko Botev
+%       
+%  Compatible versions: 2014b, 2015a
 %
 %  Use: Estimates VAR for domestic macro-financial variables in Mexico
 %
@@ -188,10 +191,8 @@ mdlMX1 = vgxset('n',nUS+nMX,'nAR',nAR,'Constant',cons, ...
         'ARsolve',repmat({logical_AR},nAR,1));
     % 'AR',repmat({num_AR},nAR,1), ...
     % 'ARsolve',repmat({logical_AR},nAR,1));
-
 [EstSpec, EstStdErrors, LLF, W] = ...
     vgxvarx(mdlMX1,Z(5:end,:),[],Z(1:4,:));
-
 VARMX1 = struct('mdlEst',EstSpec,'stdErr',EstStdErrors, ...
     'logLik',LLF,'shock',W);
 
@@ -217,19 +218,27 @@ nX = size(Xexpand,2);
 
 % Model setup
 mdlMX2 = vgxset('n',nMX,'nAR',nAR,'nX',nX,'Constant', true);   
-
 [EstSpec, EstStdErrors, LLF, W] = vgxvarx(mdlMX2,Y,Xcell);
-
 VARMX2 = struct('mdlEst',EstSpec,'stdErr',EstStdErrors, ...
     'logLik',LLF,'shock',W);
 
 
 %% Section IV: Baseline Scenario
 %
-%  US WEO baseline, adverse shocks consistent with 1994 crisis in Mexico.
-%  Xbase:   Fixed path, remainder of 2016
-%  Xfcst:   Model forecast, 2017-2020
+%  US growth at 2 percent annualy
+%   - 
 %
+%  Mexico shocks consistent with Banco de Mexico FSR
+%   - 1 std for all variables except
+%   - unemployment: 90 percent of maximum during GFC
+%   - IGAE, 2 std dev shock
+%  
+%  Variables suffixes
+%  Xorig, Yorig:        historical time series
+%  Xbase, Ybase:        months until end of 2016 (9 months)
+%  Xextend, Yextend     [Series orig; Series extend]
+%  Xfcst, Yfcst:        24 months after end of 2016
+%  Xtot, Ytot:          [Xorig; Xbase; Xfcst]
 
 
 % US 2016 baseline
@@ -237,13 +246,15 @@ VARMX2 = struct('mdlEst',EstSpec,'stdErr',EstStdErrors, ...
 % Length of 2016 baseline: 9 months
 % ---------------------------------
 
-% Historical data
+% General parameters
+base_periods = 9;
+T = 24; 
+
+% Historical data, fill NaN data with last value
 Xorig = table2array(dataUS(:,2:end));
 Xorig(end,1) = Xorig(end-1,1);          % assume zero growth IP in 3/2016
 
-% Baseline construction
-
-base_periods = 9;
+% Baseline 2016
 Xbase = zeros(base_periods,size(Xorig,2));
 
 % X(:,1) Industrial production 
@@ -291,17 +302,16 @@ Xbase(:,6) = cumprod(repmat(step,base_periods,1))*Xorig(end,6);
 
 % Extend historical series by 2016 baseline
 % calculate 1-month growth rates
-
 Xextend = [Xorig; Xbase];
 dXextend = diff(log(Xextend));
 
 % 24-month forecast for the remaining values
-T=24;
 [fcst, fcastCov] = vgxpred(VARmdlUS,T,[], dXextend(end-3:end,:));
 % vgxplot(VARmdlUS, dXextend(end-12:end,:), Forecast, ForecastCov);
 Xfcst=exp(cumsum(fcst));
 Xfcst=bsxfun(@times,Xextend(end,:),Xfcst);
 Xtot = [Xextend; Xfcst];
+dXtot = diff(log(Xtot));
 
 % Mexico 2016 baseline
 % Last observed data: March 2006
@@ -309,7 +319,7 @@ Xtot = [Xextend; Xfcst];
 % ---------------------------------
 
 % Complete NaN
-% Variable 4:   IGAE (last two)
+% Variable 4:   IGAE (last two periods incomplete)
 % Variable 5:   credit
 % Variable 6:   CPI
 % Variable 7:   Unemployment
@@ -329,7 +339,9 @@ stdIGAE  = 2;  % standard deviation shock, IGAE
 
 mx_var_array = [1 2 3 5 6];
 dY_array = dY_mx12;
-negative_shock = [3 5 6];
+
+% negative shocks to IPC, Credit, and CPI
+negative_shock = [3 5];
 
 for i=1:length(mx_var_array),
     idx = mx_var_array(i);
@@ -337,7 +349,7 @@ for i=1:length(mx_var_array),
     if ismember(idx,negative_shock),
         shock = -shock;
     end
-        step = (1+shock)^(1/base_periods);
+    step = (1+shock)^(1/base_periods);
     step = cumprod(repmat(step,base_periods,1));
     Ybase(:,idx) = Yorig(end,idx)*step;
 end,
@@ -352,17 +364,20 @@ step = (1+shock)^(1/base_periods);
 step = cumprod(repmat(step,base_periods,1));
 Ybase(:,4) = Yorig(end,4)*step;
 
-Yextend = [Yorig; Ybase];
+Yextend = [Yorig; Ybase];           % Add base_periods
 dYextend = diff(log(Yextend));
 
 % 24-month forecast for remainder of forecast horizon
+% ----------------------------------------------------
 
 % Create design matrix, exogenous regressors, cell structure
-idxMXvalid= find(~isnan(sum(dYextend,2)));      % index valid obs
-dY = dYextend(idxMXnotNaN,:);                   % only valid obss
+
+idxMXvalid = find(~isnan(sum(dYextend,2)));          % index valid obs
+dY = dYextend(idxMXvalid,:);                         % only Y valid obs
+idxMXvalid = [idxMXvalid; (1:1:T)'+idxMXvalid(end)]; % extend to Xtot
 
 lagvector = [0 1 2 3 4];                        % lags used in regression
-X = lagmatrix(dXextend, lagvector);             % lagged matrix
+X = lagmatrix(dXtot, lagvector);             % lagged matrix
 X = X(idxMXvalid,:);                            % only valid obs
 Xexpand = kron(X,eye(nMX));                     % cell structure
 Xcell = mat2cell(Xexpand, nMX*ones(size(X,1),1));
@@ -373,6 +388,66 @@ nX = size(Xexpand,2);
 Yfcst=exp(cumsum(Yfcst));
 Yfcst=bsxfun(@times,Yextend(end,:),Yfcst);
 Ytot = [Yextend; Yfcst];
+dYtot = diff(log(Ytot));
+dYtot12 = log(Ytot(13:end,:)./Ytot(1:end-12,:));
+
+% Estimate innovations to domestic variables
+% in the baseline 2016 scenario
+
+idxMXtot = find(~isnan(sum(dYtot,2)));
+[W, logL] = vgxinfer(VARMX2.mdlEst,dYtot(idxMXtot,:), Xcell);
+Wbase = W(end-T-base_periods+1:end-T,:);
+Whist = W(1:end-T-base_periods,:);
+Wstd  = nanstd(Whist);
+
+% Generate innovations
+rng(10);     % for reproducibility
+nsim = 2000;
+
+% Base period, remainder of 2016, using truncated normal random generator
+shift_factor = 0.20;
+%Wbase_shocks_std = bsxfun(@ldivide,Wstd,Wbase);  % standard normal shocks
+Wbase_shocks_minus = (1-shift_factor)*Wbase;
+Wbase_shocks_plus  = (1+shift_factor)*Wbase;
+Wbase_lowbnd = min(Wbase_shocks_minus, Wbase_shocks_plus);
+Wbase_uppbnd = max(Wbase_shocks_minus, Wbase_shocks_plus);
+%Wbase_lowbnd = bsxfun(@times,Wstd, Wbase_low_bound);
+%Wbase_uppbnd = bsxfun(@times,Wstd, Wbase_upp_bound);
+
+Q = VARMX2.mdlEst.Q; 
+base_sim = zeros(base_periods,nsim*nMX);
+for i=1:base_periods,
+    % drawing from truncated random distribution
+    aux=mvrandn(Wbase_lowbnd(i,:)',Wbase_uppbnd(i,:)',Q,nsim)';
+    aux=reshape(aux',1,numel(aux));
+    base_sim(i,:) = aux;
+end,
+
+% Forecast period, after 2016
+lb = zeros(nMX,1) - Inf;
+ub = zeros(nMX,1) + Inf;
+fcst_sim = zeros(T,nsim*nMX);
+for i=1:T,
+    % drawing from truncated random distribution
+    aux=mvrandn(lb,ub,Q,nsim)';
+    aux=reshape(aux',1,numel(aux));
+    fcst_sim(i,:) = aux;
+end,
+
+% innovations
+% (base_periods + T) x (nMX x nsim)
+Wsim = [base_sim; fcst_sim];
+Wsim3D = reshape(Wsim,base_periods+T,nMX,nsim);
+
+[Ysim, logL] = vgxproc(VARMX2.mdlEst,Wsim3D,...
+    Xcell(end-base_periods-T+1:end,:), ...
+    dYtot(end-base_periods-T-4+1:end,:), ...
+    Whist(end-4+1:end,:));
+
+quartile_vector = [0.05 0.25 0.50 0.75 0.95];
+h = squeeze(Ysim(:,4,:));
+h = exp(cumsum(h));
+hq = quantile(h, [0.05, 0.25, 0.50, 0.75, 0.95],2);
 
 
 
@@ -399,16 +474,9 @@ nX = size(Xexpand,2);
 
 
 
-
-
-
-
-
 %% Section IV - create shocks
 
 % Create scenario tables
-
-
 
 
 months = 1:1:12;
